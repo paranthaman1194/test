@@ -1,0 +1,77 @@
+---
+- name: Deploy E-commerce Web Application
+  hosts: web_servers
+  become: yes
+  vars:
+    app_name: ecommerce-app
+    app_user: webapp
+    app_directory: /opt/{{ app_name }}
+    
+  tasks:
+    - name: Update system packages
+      yum:
+        name: "*"
+        state: latest
+        
+    - name: Install required packages
+      yum:
+        name:
+          - nginx
+          - nodejs
+          - npm
+          - git
+        state: present
+        
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        system: yes
+        shell: /bin/bash
+        home: "{{ app_directory }}"
+        
+    - name: Create application directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+        
+    - name: Clone application repository
+      git:
+        repo: https://github.com/company/ecommerce-app.git
+        dest: "{{ app_directory }}/src"
+        version: main
+      become_user: "{{ app_user }}"
+      notify: restart application
+      
+    - name: Install application dependencies
+      npm:
+        path: "{{ app_directory }}/src"
+      become_user: "{{ app_user }}"
+      
+    - name: Configure Nginx
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/conf.d/{{ app_name }}.conf
+      notify: restart nginx
+      
+    - name: Start and enable services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - nginx
+        - "{{ app_name }}"
+        
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+        
+    - name: restart application
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
